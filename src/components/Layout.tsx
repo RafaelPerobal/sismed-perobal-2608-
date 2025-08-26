@@ -1,117 +1,140 @@
 
-import React, { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Home, 
   Users, 
   Pill, 
   FileText, 
-  User,
   LogOut,
-  Activity
+  User,
+  Building2
 } from 'lucide-react';
-import { initializeData } from '../utils/dataSeed';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
+interface ProfessionalData {
+  type: string;
+  name: string;
+  registry: string;
+  healthUnit: string;
+}
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
-const Layout = ({ children }: LayoutProps) => {
+const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const currentPath = location.pathname;
+  const navigate = useNavigate();
+  const [professional, setProfessional] = useState<ProfessionalData | null>(null);
 
   useEffect(() => {
-    initializeData();
+    const professionalData = sessionStorage.getItem('sismed-current-professional');
+    if (professionalData) {
+      setProfessional(JSON.parse(professionalData));
+    }
   }, []);
 
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: Home },
-    { name: 'Pacientes', href: '/pacientes', icon: Users },
-    { name: 'Medicamentos', href: '/medicamentos', icon: Pill },
-    { name: 'Receitas', href: '/receitas', icon: FileText },
-  ];
-
-  const professional = {
-    name: 'Dr. João Silva',
-    type: 'Médico',
-    registry: 'CRM 12345-SP',
-    specialty: 'Clínica Geral'
+  const handleLogout = () => {
+    sessionStorage.removeItem('sismed-current-professional');
+    toast.success('Sessão encerrada com sucesso!');
+    navigate('/identificacao');
   };
 
+  const menuItems = [
+    { path: '/', icon: Home, label: 'Dashboard' },
+    { path: '/pacientes', icon: Users, label: 'Pacientes' },
+    { path: '/medicamentos', icon: Pill, label: 'Medicamentos' },
+    { path: '/receitas', icon: FileText, label: 'Receitas' },
+  ];
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b-2 border-medical-warning shadow-sm">
+      <div className="bg-white border-b-2 border-medical-warning shadow-sm">
         <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
             <img 
               src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" 
               alt="Prefeitura de Perobal" 
-              className="h-12 w-auto"
+              className="h-12"
             />
-            <div className="border-l-2 border-medical-warning pl-4">
-              <img 
-                src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" 
-                alt="SISMED" 
-                className="h-10 w-auto"
-              />
+            <img 
+              src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" 
+              alt="SISMED" 
+              className="h-12"
+            />
+            <div>
+              <h1 className="text-xl font-bold text-medical-primary">
+                SISMED Perobal
+              </h1>
+              <p className="text-sm text-gray-600">
+                Sistema de Saúde Municipal
+              </p>
             </div>
           </div>
-          
-          <div className="professional-header">
-            <div className="flex items-center gap-3">
-              <User className="h-5 w-5" />
-              <div>
-                <div className="font-semibold text-white">{professional.name}</div>
-                <div className="text-sm opacity-90 text-white">
-                  {professional.type} • {professional.registry}
+
+          {professional && (
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                  <User className="h-4 w-4" />
+                  {professional.name}
+                </div>
+                <div className="text-xs text-gray-600">
+                  {professional.type}
+                  {professional.registry && ` • ${professional.registry}`}
+                </div>
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Building2 className="h-3 w-3" />
+                  {professional.healthUnit}
                 </div>
               </div>
-              <button className="ml-4 p-2 hover:bg-white/10 rounded-md transition-colors">
-                <LogOut className="h-4 w-4" />
-              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                <LogOut className="h-4 w-4 mr-1" />
+                Sair
+              </Button>
             </div>
-          </div>
+          )}
         </div>
-      </header>
+      </div>
 
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-medical-primary border-r-2 border-medical-warning shadow-sm min-h-[calc(100vh-80px)]">
-          <nav className="p-4 space-y-2">
-            {navigation.map((item) => {
+        <div className="w-64 bg-white border-r-2 border-medical-warning min-h-[calc(100vh-80px)] p-4">
+          <nav className="space-y-2">
+            {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentPath === item.href;
+              const isActive = location.pathname === item.path;
               
               return (
                 <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`medical-nav-item ${isActive ? 'active' : ''}`}
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-medical-primary text-white'
+                      : 'text-gray-700 hover:bg-medical-warning/10 hover:text-medical-primary'
+                  }`}
                 >
                   <Icon className="h-5 w-5" />
-                  {item.name}
+                  {item.label}
                 </Link>
               );
             })}
           </nav>
-
-          {/* System Status */}
-          <div className="mt-8 p-4 border-t-2 border-white/20">
-            <div className="flex items-center gap-2 text-sm text-green-300">
-              <Activity className="h-4 w-4" />
-              Sistema Online
-            </div>
-            <div className="text-xs text-white/70 mt-1">
-              SISMED Perobal v3.0
-            </div>
-          </div>
-        </aside>
+        </div>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 bg-white">
+        <div className="flex-1 p-6">
           {children}
-        </main>
+        </div>
       </div>
     </div>
   );

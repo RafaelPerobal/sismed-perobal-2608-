@@ -101,12 +101,12 @@ const Receitas = () => {
       };
 
       setPrescriptions(prev => [...prev, prescription]);
-      
-      // Generate PDF for each prescription
-      setTimeout(() => {
-        generatePrescriptionPDF(patient, prescriptionMeds, prescriptionDate, month + 1, monthsNum);
-      }, month * 500); // Delay to avoid browser blocking multiple popups
     }
+
+    // Generate single PDF with all prescriptions
+    setTimeout(() => {
+      generateMultiplePrescriptionsPDF(patient, prescriptionMeds, baseDate, monthsNum);
+    }, 100);
 
     toast.success(`${monthsNum} receita(s) gerada(s) com sucesso!`);
     
@@ -118,11 +118,23 @@ const Receitas = () => {
     setObservations('');
   };
 
-  const generatePrescriptionPDF = (
+  const formatDateToPerobal = (date: Date) => {
+    const months = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    
+    return `Perobal, dia ${day} de ${month} de ${year}`;
+  };
+
+  const generateMultiplePrescriptionsPDF = (
     patient: Patient, 
     medications: PrescriptionMedication[], 
-    prescriptionDate: Date,
-    monthNumber: number,
+    baseDate: Date,
     totalMonths: number
   ) => {
     const newWindow = window.open('', '_blank');
@@ -134,57 +146,76 @@ const Receitas = () => {
       return today.getFullYear() - birth.getFullYear();
     };
 
-    const generateViaHTML = (viaType: string) => `
-      <div class="prescription-via">
-        <div class="via-label">${viaType}</div>
-        
-        <div class="header">
-          <div class="logo-section">
-            <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
-            <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
-          </div>
-          <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
-          <div class="subtitle">RECEITA MÉDICA ${totalMonths > 1 ? `- ${monthNumber}ª VIA DE ${totalMonths}` : ''}</div>
-        </div>
-
-        <div class="professional-info">
-          <strong>Profissional:</strong> ${professional.name}<br>
-          <strong>Registro:</strong> ${professional.registry}<br>
-          <strong>Especialidade:</strong> ${professional.specialty}
-        </div>
-
-        <div class="patient-info">
-          <strong>Paciente:</strong> ${patient.name}<br>
-          <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
-          <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
-          <strong>Data:</strong> ${prescriptionDate.toLocaleDateString('pt-BR')}
-        </div>
-
-        <div class="medications">
-          <strong>Medicamentos Prescritos:</strong>
-          ${medications.map(item => `
-            <div class="medication-item">
-              <div class="medication-name">
-                ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
-                ${item.medication.isControlled ? '<span class="controlled-badge">CONTROLADO</span>' : ''}
-              </div>
-              <div class="medication-posology">${item.posology}</div>
+    const generateSinglePrescriptionHTML = (prescriptionDate: Date, monthNumber: number) => {
+      const generateViaHTML = (viaType: string) => `
+        <div class="prescription-via">
+          <div class="via-label">${viaType}</div>
+          
+          <div class="header">
+            <div class="logo-section">
+              <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
+              <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
             </div>
-          `).join('')}
-        </div>
+            <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
+            <div class="subtitle">RECEITA MÉDICA ${totalMonths > 1 ? `- ${monthNumber}ª VIA DE ${totalMonths}` : ''}</div>
+          </div>
 
-        ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+          <div class="professional-info">
+            <strong>Profissional:</strong> ${professional.name}<br>
+            <strong>Registro:</strong> ${professional.registry}<br>
+            <strong>Especialidade:</strong> ${professional.specialty || 'Clínica Geral'}
+          </div>
 
-        <div class="footer">
-          <div>Válida por 1 mês</div>
-          <div class="signature-line"></div>
-          <div style="text-align: center; margin-top: 5px;">
-            ${professional.name}<br>
-            ${professional.registry}
+          <div class="patient-info">
+            <strong>Paciente:</strong> ${patient.name}<br>
+            <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
+            <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+            <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
+          </div>
+
+          <div class="medications">
+            <strong>Medicamentos Prescritos:</strong>
+            ${medications.map(item => `
+              <div class="medication-item">
+                <div class="medication-name">
+                  ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
+                  ${item.medication.isControlled ? '<span class="controlled-badge">CONTROLADO</span>' : ''}
+                </div>
+                <div class="medication-posology">${item.posology}</div>
+              </div>
+            `).join('')}
+          </div>
+
+          ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+
+          <div class="footer">
+            <div>Válido por 30 dias a partir de ${formatDateToPerobal(prescriptionDate)}</div>
+            <div class="signature-line"></div>
+            <div style="text-align: center; margin-top: 5px;">
+              ${professional.name}<br>
+              ${professional.registry}
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
+
+      return `
+        <div class="prescription-page">
+          <div class="prescription-container">
+            ${generateViaHTML('VIA DA FARMÁCIA')}
+            ${generateViaHTML('VIA DO PACIENTE')}
+          </div>
+        </div>
+      `;
+    };
+
+    // Generate all prescriptions HTML
+    let allPrescriptionsHTML = '';
+    for (let month = 0; month < totalMonths; month++) {
+      const prescriptionDate = new Date(baseDate);
+      prescriptionDate.setMonth(prescriptionDate.getMonth() + month);
+      allPrescriptionsHTML += generateSinglePrescriptionHTML(prescriptionDate, month + 1);
+    }
 
     const prescriptionHTML = `
       <!DOCTYPE html>
@@ -192,12 +223,27 @@ const Receitas = () => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Receita Médica - ${monthNumber}ª Via</title>
+        <title>Receitas Médicas - ${totalMonths} ${totalMonths === 1 ? 'Via' : 'Vias'}</title>
         <style>
           @page { size: A4 landscape; margin: 1cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
-          .prescription-container { display: flex; gap: 10px; height: 100vh; }
+          
+          .prescription-page {
+            page-break-after: always;
+            height: 100vh;
+          }
+          
+          .prescription-page:last-child {
+            page-break-after: auto;
+          }
+          
+          .prescription-container { 
+            display: flex; 
+            gap: 10px; 
+            height: 100%; 
+          }
+          
           .prescription-via { 
             flex: 1; 
             border: 2px solid #fbbf24; 
@@ -205,6 +251,7 @@ const Receitas = () => {
             background: white;
             position: relative;
           }
+          
           .prescription-via:first-child::after {
             content: '';
             position: absolute;
@@ -214,6 +261,7 @@ const Receitas = () => {
             width: 2px;
             border-right: 2px dashed #666;
           }
+          
           .via-label { 
             text-align: center; 
             font-weight: bold; 
@@ -221,16 +269,19 @@ const Receitas = () => {
             margin-bottom: 20px;
             font-size: 14px;
           }
+          
           .header { 
             text-align: center; 
             border-bottom: 2px solid #1e40af; 
             padding-bottom: 15px; 
             margin-bottom: 20px;
           }
+          
           .logo-section { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
           .logo-section img { height: 40px; }
           .title { color: #1e40af; font-size: 18px; font-weight: bold; }
           .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
+          
           .professional-info, .patient-info { 
             background: #f8f9fa; 
             padding: 10px; 
@@ -238,6 +289,7 @@ const Receitas = () => {
             border-radius: 5px; 
             margin-bottom: 20px;
           }
+          
           .medications { margin-bottom: 20px; }
           .medication-item { 
             padding: 8px; 
@@ -246,6 +298,7 @@ const Receitas = () => {
           }
           .medication-name { font-weight: bold; color: black; }
           .medication-posology { margin-top: 5px; font-style: italic; }
+          
           .controlled-badge { 
             background: #fca5a5; 
             color: #991b1b; 
@@ -255,12 +308,15 @@ const Receitas = () => {
             font-size: 10px;
             margin-left: 10px;
           }
+          
           .observations { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border: 2px solid #fbbf24; border-radius: 5px; }
+          
           .footer { 
             margin-top: 30px; 
             border-top: 2px solid #fbbf24; 
             padding-top: 15px;
           }
+          
           .signature-line { 
             border-bottom: 2px solid #000; 
             width: 300px; 
@@ -269,10 +325,7 @@ const Receitas = () => {
         </style>
       </head>
       <body>
-        <div class="prescription-container">
-          ${generateViaHTML('VIA DA FARMÁCIA')}
-          ${generateViaHTML('VIA DO PACIENTE')}
-        </div>
+        ${allPrescriptionsHTML}
         <script>
           window.onload = function() {
             window.print();

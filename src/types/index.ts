@@ -1,0 +1,41 @@
+
+export interface Patient {
+  id: string;
+  name: string;
+  birthDate: string;
+  cns: string;
+  phone: string;
+  address: string;
+}
+
+export interface Medication {
+  id: string;
+  name: string;
+  dosage: string;
+  presentation: string;
+  isControlled: boolean;
+}
+
+export interface PrescriptionMedication {
+  medication: Medication;
+  posology: string;
+}
+
+export interface Prescription {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientCNS: string;
+  medications: PrescriptionMedication[];
+  months: number;
+  observations: string;
+  date: string;
+  professionalName: string;
+}
+
+export interface Professional {
+  name: string;
+  type: string;
+  registry: string;
+  specialty: string;
+}

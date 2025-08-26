@@ -8,75 +8,36 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-
-interface Patient {
-  id: string;
-  name: string;
-  cpf: string;
-  birthDate: string;
-  phone: string;
-  address: string;
-  city: string;
-  state: string;
-  cep: string;
-}
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { validateCNS, formatCNS } from '@/utils/cnsValidation';
+import { Patient } from '@/types';
 
 const Pacientes = () => {
-  const [patients, setPatients] = useState<Patient[]>([
-    {
-      id: '1',
-      name: 'Maria da Silva Santos',
-      cpf: '123.456.789-00',
-      birthDate: '1985-03-15',
-      phone: '(11) 99999-9999',
-      address: 'Rua das Flores, 123',
-      city: 'Perobal',
-      state: 'PR',
-      cep: '87990-000'
-    },
-    {
-      id: '2',
-      name: 'João Carlos Oliveira',
-      cpf: '987.654.321-00',
-      birthDate: '1978-07-22',
-      phone: '(11) 88888-8888',
-      address: 'Av. Principal, 456',
-      city: 'Perobal',
-      state: 'PR',
-      cep: '87990-000'
-    }
-  ]);
-
+  const [patients, setPatients] = useLocalStorage<Patient[]>('sismed-patients', []);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   
   const [formData, setFormData] = useState<Omit<Patient, 'id'>>({
     name: '',
-    cpf: '',
     birthDate: '',
+    cns: '',
     phone: '',
-    address: '',
-    city: 'Perobal',
-    state: 'PR',
-    cep: ''
+    address: ''
   });
 
   const filteredPatients = patients.filter(patient =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.cpf.includes(searchTerm)
+    patient.cns.includes(searchTerm.replace(/\D/g, ''))
   );
 
   const resetForm = () => {
     setFormData({
       name: '',
-      cpf: '',
       birthDate: '',
+      cns: '',
       phone: '',
-      address: '',
-      city: 'Perobal',
-      state: 'PR',
-      cep: ''
+      address: ''
     });
     setEditingPatient(null);
   };
@@ -85,13 +46,10 @@ const Pacientes = () => {
     setEditingPatient(patient);
     setFormData({
       name: patient.name,
-      cpf: patient.cpf,
       birthDate: patient.birthDate,
+      cns: patient.cns,
       phone: patient.phone,
-      address: patient.address,
-      city: patient.city,
-      state: patient.state,
-      cep: patient.cep
+      address: patient.address
     });
     setIsDialogOpen(true);
   };
@@ -106,6 +64,12 @@ const Pacientes = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validate CNS
+    if (!validateCNS(formData.cns)) {
+      toast.error('CNS inválido. Deve ter 15 dígitos válidos.');
+      return;
+    }
+
     if (editingPatient) {
       setPatients(patients.map(p => 
         p.id === editingPatient.id 
@@ -144,7 +108,7 @@ const Pacientes = () => {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-medical-primary">
+            <h1 className="text-3xl font-bold text-foreground">
               Gestão de Pacientes
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -164,31 +128,20 @@ const Pacientes = () => {
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>
+                <DialogTitle className="text-foreground">
                   {editingPatient ? 'Editar Paciente' : 'Novo Paciente'}
                 </DialogTitle>
               </DialogHeader>
               
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="medical-form-group">
-                    <Label className="medical-form-label">Nome Completo *</Label>
-                    <Input
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="medical-form-group">
-                    <Label className="medical-form-label">CPF *</Label>
-                    <Input
-                      value={formData.cpf}
-                      onChange={(e) => setFormData({...formData, cpf: e.target.value})}
-                      placeholder="000.000.000-00"
-                      required
-                    />
-                  </div>
+                <div className="medical-form-group">
+                  <Label className="medical-form-label">Nome Completo *</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className="border-2 border-medical-warning"
+                    required
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -198,53 +151,42 @@ const Pacientes = () => {
                       type="date"
                       value={formData.birthDate}
                       onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+                      className="border-2 border-medical-warning"
                       required
                     />
                   </div>
                   
+                  <div className="medical-form-group">
+                    <Label className="medical-form-label">CNS (15 dígitos) *</Label>
+                    <Input
+                      value={formatCNS(formData.cns)}
+                      onChange={(e) => setFormData({...formData, cns: e.target.value.replace(/\D/g, '')})}
+                      placeholder="000 0000 0000 0000"
+                      className="border-2 border-medical-warning"
+                      maxLength={19}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="medical-form-group">
                     <Label className="medical-form-label">Telefone</Label>
                     <Input
                       value={formData.phone}
                       onChange={(e) => setFormData({...formData, phone: e.target.value})}
                       placeholder="(00) 00000-0000"
-                    />
-                  </div>
-                </div>
-
-                <div className="medical-form-group">
-                  <Label className="medical-form-label">Endereço</Label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) => setFormData({...formData, address: e.target.value})}
-                    placeholder="Rua, número, complemento"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="medical-form-group">
-                    <Label className="medical-form-label">Cidade</Label>
-                    <Input
-                      value={formData.city}
-                      onChange={(e) => setFormData({...formData, city: e.target.value})}
+                      className="border-2 border-medical-warning"
                     />
                   </div>
                   
                   <div className="medical-form-group">
-                    <Label className="medical-form-label">Estado</Label>
+                    <Label className="medical-form-label">Endereço</Label>
                     <Input
-                      value={formData.state}
-                      onChange={(e) => setFormData({...formData, state: e.target.value})}
-                      maxLength={2}
-                    />
-                  </div>
-                  
-                  <div className="medical-form-group">
-                    <Label className="medical-form-label">CEP</Label>
-                    <Input
-                      value={formData.cep}
-                      onChange={(e) => setFormData({...formData, cep: e.target.value})}
-                      placeholder="00000-000"
+                      value={formData.address}
+                      onChange={(e) => setFormData({...formData, address: e.target.value})}
+                      placeholder="Rua, número, complemento"
+                      className="border-2 border-medical-warning"
                     />
                   </div>
                 </div>
@@ -267,23 +209,23 @@ const Pacientes = () => {
         </div>
 
         {/* Search */}
-        <Card>
+        <Card className="medical-card">
           <CardContent className="p-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Buscar por nome ou CPF..."
+                placeholder="Buscar por nome ou CNS..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 border-2 border-medical-warning"
               />
             </div>
           </CardContent>
         </Card>
 
         {/* Patients Table */}
-        <Card>
-          <CardHeader>
+        <Card className="medical-card">
+          <CardHeader className="medical-card-header">
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-medical-primary" />
               Pacientes Cadastrados ({filteredPatients.length})
@@ -295,21 +237,21 @@ const Pacientes = () => {
                 <thead>
                   <tr>
                     <th>Nome</th>
-                    <th>CPF</th>
+                    <th>CNS</th>
                     <th>Idade</th>
                     <th>Telefone</th>
-                    <th>Cidade</th>
+                    <th>Endereço</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPatients.map((patient) => (
                     <tr key={patient.id}>
-                      <td className="font-medium">{patient.name}</td>
-                      <td className="font-mono">{patient.cpf}</td>
+                      <td className="font-medium text-foreground">{patient.name}</td>
+                      <td className="font-mono">{formatCNS(patient.cns)}</td>
                       <td>{calculateAge(patient.birthDate)} anos</td>
-                      <td>{patient.phone}</td>
-                      <td>{patient.city}/{patient.state}</td>
+                      <td>{patient.phone || '-'}</td>
+                      <td>{patient.address || '-'}</td>
                       <td>
                         <div className="flex gap-2">
                           <Button

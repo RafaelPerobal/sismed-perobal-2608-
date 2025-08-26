@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { FileText, User, Pill, ArrowRight, ArrowLeft, Printer, CheckCircle } from 'lucide-react';
+import { FileText, User, Pill, ArrowRight, ArrowLeft, Printer } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,49 +10,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-
-interface Patient {
-  id: string;
-  name: string;
-  cpf: string;
-  birthDate: string;
-}
-
-interface Medication {
-  id: string;
-  name: string;
-  activeIngredient: string;
-  isControlled: boolean;
-  controlType?: string;
-}
-
-interface PrescriptionMedication {
-  medication: Medication;
-  dosage: string;
-}
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { formatCNS } from '@/utils/cnsValidation';
+import { Patient, Medication, PrescriptionMedication, Prescription } from '@/types';
 
 const Receitas = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedPatient, setSelectedPatient] = useState('');
   const [prescriptionMonths, setPrescriptionMonths] = useState('1');
   const [selectedMedications, setSelectedMedications] = useState<string[]>([]);
-  const [medicationDosages, setMedicationDosages] = useState<{[key: string]: string}>({});
+  const [medicationPosologies, setMedicationPosologies] = useState<{[key: string]: string}>({});
   const [observations, setObservations] = useState('');
 
-  // Mock data
-  const patients: Patient[] = [
-    { id: '1', name: 'Maria da Silva Santos', cpf: '123.456.789-00', birthDate: '1985-03-15' },
-    { id: '2', name: 'João Carlos Oliveira', cpf: '987.654.321-00', birthDate: '1978-07-22' },
-    { id: '3', name: 'Ana Costa Ferreira', cpf: '456.789.123-00', birthDate: '1990-11-08' }
-  ];
-
-  const medications: Medication[] = [
-    { id: '1', name: 'Paracetamol 500mg', activeIngredient: 'Paracetamol', isControlled: false },
-    { id: '2', name: 'Amoxicilina 500mg', activeIngredient: 'Amoxicilina', isControlled: false },
-    { id: '3', name: 'Clonazepam 2mg', activeIngredient: 'Clonazepam', isControlled: true, controlType: 'B1' },
-    { id: '4', name: 'Losartana 50mg', activeIngredient: 'Losartana', isControlled: false },
-    { id: '5', name: 'Metformina 850mg', activeIngredient: 'Metformina', isControlled: false }
-  ];
+  const [patients] = useLocalStorage<Patient[]>('sismed-patients', []);
+  const [medications] = useLocalStorage<Medication[]>('sismed-medications', []);
+  const [prescriptions, setPrescriptions] = useLocalStorage<Prescription[]>('sismed-prescriptions', []);
 
   const professional = {
     name: 'Dr. João Silva',
@@ -69,10 +41,10 @@ const Receitas = () => {
     );
   };
 
-  const handleDosageChange = (medicationId: string, dosage: string) => {
-    setMedicationDosages(prev => ({
+  const handlePosologyChange = (medicationId: string, posology: string) => {
+    setMedicationPosologies(prev => ({
       ...prev,
-      [medicationId]: dosage
+      [medicationId]: posology
     }));
   };
 
@@ -88,34 +60,131 @@ const Receitas = () => {
     setCurrentStep(2);
   };
 
-  const generatePrescription = () => {
-    // Validate controlled medications have dosage
+  const generatePrescriptions = () => {
     const controlledMeds = selectedMedications
       .map(id => medications.find(m => m.id === id))
       .filter(med => med?.isControlled);
     
-    const missingDosage = controlledMeds.some(med => 
-      !medicationDosages[med!.id] || medicationDosages[med!.id].trim() === ''
+    const missingPosology = controlledMeds.some(med => 
+      !medicationPosologies[med!.id] || medicationPosologies[med!.id].trim() === ''
     );
 
-    if (missingDosage) {
+    if (missingPosology) {
       toast.error('Medicamentos controlados devem ter posologia preenchida');
       return;
     }
 
-    // Generate prescription
     const patient = patients.find(p => p.id === selectedPatient)!;
     const prescriptionMeds: PrescriptionMedication[] = selectedMedications.map(id => ({
       medication: medications.find(m => m.id === id)!,
-      dosage: medicationDosages[id] || 'Conforme orientação médica'
+      posology: medicationPosologies[id] || 'Conforme orientação médica'
     }));
 
-    generatePrescriptionPDF(patient, prescriptionMeds);
+    const monthsNum = parseInt(prescriptionMonths);
+    const baseDate = new Date();
+    
+    // Generate multiple prescriptions for each month
+    for (let month = 0; month < monthsNum; month++) {
+      const prescriptionDate = new Date(baseDate);
+      prescriptionDate.setMonth(prescriptionDate.getMonth() + month);
+      
+      const prescription: Prescription = {
+        id: `RX${Date.now()}-${month + 1}`,
+        patientId: patient.id,
+        patientName: patient.name,
+        patientCNS: patient.cns,
+        medications: prescriptionMeds,
+        months: 1, // Each prescription is for 1 month
+        observations: observations,
+        date: prescriptionDate.toISOString(),
+        professionalName: professional.name
+      };
+
+      setPrescriptions(prev => [...prev, prescription]);
+      
+      // Generate PDF for each prescription
+      setTimeout(() => {
+        generatePrescriptionPDF(patient, prescriptionMeds, prescriptionDate, month + 1, monthsNum);
+      }, month * 500); // Delay to avoid browser blocking multiple popups
+    }
+
+    toast.success(`${monthsNum} receita(s) gerada(s) com sucesso!`);
+    
+    // Reset form
+    setCurrentStep(1);
+    setSelectedPatient('');
+    setSelectedMedications([]);
+    setMedicationPosologies({});
+    setObservations('');
   };
 
-  const generatePrescriptionPDF = (patient: Patient, medications: PrescriptionMedication[]) => {
+  const generatePrescriptionPDF = (
+    patient: Patient, 
+    medications: PrescriptionMedication[], 
+    prescriptionDate: Date,
+    monthNumber: number,
+    totalMonths: number
+  ) => {
     const newWindow = window.open('', '_blank');
     if (!newWindow) return;
+
+    const calculateAge = (birthDate: string) => {
+      const today = new Date();
+      const birth = new Date(birthDate);
+      return today.getFullYear() - birth.getFullYear();
+    };
+
+    const generateViaHTML = (viaType: string) => `
+      <div class="prescription-via">
+        <div class="via-label">${viaType}</div>
+        
+        <div class="header">
+          <div class="logo-section">
+            <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
+            <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
+          </div>
+          <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
+          <div class="subtitle">RECEITA MÉDICA ${totalMonths > 1 ? `- ${monthNumber}ª VIA DE ${totalMonths}` : ''}</div>
+        </div>
+
+        <div class="professional-info">
+          <strong>Profissional:</strong> ${professional.name}<br>
+          <strong>Registro:</strong> ${professional.registry}<br>
+          <strong>Especialidade:</strong> ${professional.specialty}
+        </div>
+
+        <div class="patient-info">
+          <strong>Paciente:</strong> ${patient.name}<br>
+          <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
+          <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+          <strong>Data:</strong> ${prescriptionDate.toLocaleDateString('pt-BR')}
+        </div>
+
+        <div class="medications">
+          <strong>Medicamentos Prescritos:</strong>
+          ${medications.map(item => `
+            <div class="medication-item">
+              <div class="medication-name">
+                ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
+                ${item.medication.isControlled ? '<span class="controlled-badge">CONTROLADO</span>' : ''}
+              </div>
+              <div class="medication-posology">${item.posology}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+
+        <div class="footer">
+          <div>Válida por 1 mês</div>
+          <div class="signature-line"></div>
+          <div style="text-align: center; margin-top: 5px;">
+            ${professional.name}<br>
+            ${professional.registry}
+          </div>
+        </div>
+      </div>
+    `;
 
     const prescriptionHTML = `
       <!DOCTYPE html>
@@ -123,15 +192,15 @@ const Receitas = () => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Receita Médica</title>
+        <title>Receita Médica - ${monthNumber}ª Via</title>
         <style>
           @page { size: A4 landscape; margin: 1cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; font-size: 12px; }
+          body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
           .prescription-container { display: flex; gap: 10px; height: 100vh; }
           .prescription-via { 
             flex: 1; 
-            border: 2px solid #1e5f8b; 
+            border: 2px solid #fbbf24; 
             padding: 20px; 
             background: white;
             position: relative;
@@ -145,25 +214,27 @@ const Receitas = () => {
             width: 2px;
             border-right: 2px dashed #666;
           }
+          .via-label { 
+            text-align: center; 
+            font-weight: bold; 
+            color: #1e40af; 
+            margin-bottom: 20px;
+            font-size: 14px;
+          }
           .header { 
             text-align: center; 
-            border-bottom: 2px solid #1e5f8b; 
+            border-bottom: 2px solid #1e40af; 
             padding-bottom: 15px; 
             margin-bottom: 20px;
           }
           .logo-section { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
           .logo-section img { height: 40px; }
-          .title { color: #1e5f8b; font-size: 18px; font-weight: bold; }
+          .title { color: #1e40af; font-size: 18px; font-weight: bold; }
           .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
-          .professional-info { 
+          .professional-info, .patient-info { 
             background: #f8f9fa; 
             padding: 10px; 
-            border-radius: 5px; 
-            margin-bottom: 20px;
-          }
-          .patient-info { 
-            background: #e8f4f8; 
-            padding: 10px; 
+            border: 2px solid #fbbf24;
             border-radius: 5px; 
             margin-bottom: 20px;
           }
@@ -173,39 +244,34 @@ const Receitas = () => {
             border-bottom: 1px solid #eee; 
             margin-bottom: 10px;
           }
-          .medication-name { font-weight: bold; color: #1e5f8b; }
-          .medication-dosage { margin-top: 5px; font-style: italic; }
+          .medication-name { font-weight: bold; color: black; }
+          .medication-posology { margin-top: 5px; font-style: italic; }
           .controlled-badge { 
-            background: #ffc107; 
-            color: #000; 
+            background: #fca5a5; 
+            color: #991b1b; 
+            border: 1px solid #f87171;
             padding: 2px 6px; 
             border-radius: 3px; 
             font-size: 10px;
             margin-left: 10px;
           }
+          .observations { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border: 2px solid #fbbf24; border-radius: 5px; }
           .footer { 
             margin-top: 30px; 
-            border-top: 1px solid #ddd; 
+            border-top: 2px solid #fbbf24; 
             padding-top: 15px;
           }
           .signature-line { 
-            border-bottom: 1px solid #000; 
+            border-bottom: 2px solid #000; 
             width: 300px; 
             margin: 30px auto 10px;
-          }
-          .via-label { 
-            text-align: center; 
-            font-weight: bold; 
-            color: #1e5f8b; 
-            margin-bottom: 20px;
-            font-size: 14px;
           }
         </style>
       </head>
       <body>
         <div class="prescription-container">
-          ${generateViaHTML('VIA DA FARMÁCIA', patient, medications)}
-          ${generateViaHTML('VIA DO PACIENTE', patient, medications)}
+          ${generateViaHTML('VIA DA FARMÁCIA')}
+          ${generateViaHTML('VIA DO PACIENTE')}
         </div>
         <script>
           window.onload = function() {
@@ -218,88 +284,6 @@ const Receitas = () => {
 
     newWindow.document.write(prescriptionHTML);
     newWindow.document.close();
-
-    // Save prescription record
-    const prescriptionRecord = {
-      id: `RX${Date.now()}`,
-      patientId: patient.id,
-      patientName: patient.name,
-      medications: medications,
-      date: new Date().toISOString(),
-      professionalName: professional.name,
-      observations: observations
-    };
-
-    // In real app, this would go to localStorage
-    console.log('Prescription generated:', prescriptionRecord);
-    toast.success('Receita gerada com sucesso!');
-    
-    // Reset form
-    setCurrentStep(1);
-    setSelectedPatient('');
-    setSelectedMedications([]);
-    setMedicationDosages({});
-    setObservations('');
-  };
-
-  const generateViaHTML = (viaType: string, patient: Patient, medications: PrescriptionMedication[]) => {
-    const calculateAge = (birthDate: string) => {
-      const today = new Date();
-      const birth = new Date(birthDate);
-      return today.getFullYear() - birth.getFullYear();
-    };
-
-    return `
-      <div class="prescription-via">
-        <div class="via-label">${viaType}</div>
-        
-        <div class="header">
-          <div class="logo-section">
-            <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
-            <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
-          </div>
-          <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
-          <div class="subtitle">RECEITA MÉDICA</div>
-        </div>
-
-        <div class="professional-info">
-          <strong>Profissional:</strong> ${professional.name}<br>
-          <strong>Registro:</strong> ${professional.registry}<br>
-          <strong>Especialidade:</strong> ${professional.specialty}
-        </div>
-
-        <div class="patient-info">
-          <strong>Paciente:</strong> ${patient.name}<br>
-          <strong>CPF:</strong> ${patient.cpf}<br>
-          <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
-          <strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}
-        </div>
-
-        <div class="medications">
-          <strong>Medicamentos Prescritos:</strong>
-          ${medications.map(item => `
-            <div class="medication-item">
-              <div class="medication-name">
-                ${item.medication.name}
-                ${item.medication.isControlled ? `<span class="controlled-badge">CONTROLADO ${item.medication.controlType}</span>` : ''}
-              </div>
-              <div class="medication-dosage">${item.dosage}</div>
-            </div>
-          `).join('')}
-        </div>
-
-        ${observations ? `<div><strong>Observações:</strong><br>${observations}</div>` : ''}
-
-        <div class="footer">
-          <div>Válida por ${prescriptionMonths} mês(es)</div>
-          <div class="signature-line"></div>
-          <div style="text-align: center; margin-top: 5px;">
-            ${professional.name}<br>
-            ${professional.registry}
-          </div>
-        </div>
-      </div>
-    `;
   };
 
   return (
@@ -308,11 +292,11 @@ const Receitas = () => {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-medical-primary">
+            <h1 className="text-3xl font-bold text-foreground">
               Emissão de Receitas
             </h1>
             <p className="text-muted-foreground mt-1">
-              Prescreva medicamentos e gere receitas profissionais
+              Prescreva medicamentos e gere receitas múltiplas
             </p>
           </div>
         </div>
@@ -321,17 +305,12 @@ const Receitas = () => {
         <div className="step-indicator">
           <div className="step-item">
             <div className={`step-number ${currentStep >= 1 ? 'active' : 'inactive'}`}>1</div>
-            <span className="text-sm font-medium">Seleção</span>
+            <span className="text-sm font-medium text-foreground">Seleção</span>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
           <div className="step-item">
             <div className={`step-number ${currentStep >= 2 ? 'active' : 'inactive'}`}>2</div>
-            <span className="text-sm font-medium">Posologia</span>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <div className="step-item">
-            <div className={`step-number ${currentStep >= 3 ? 'completed' : 'inactive'}`}>3</div>
-            <span className="text-sm font-medium">Impressão</span>
+            <span className="text-sm font-medium text-foreground">Posologia</span>
           </div>
         </div>
 
@@ -340,8 +319,8 @@ const Receitas = () => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Patient Selection */}
-              <Card>
-                <CardHeader>
+              <Card className="medical-card">
+                <CardHeader className="medical-card-header">
                   <CardTitle className="flex items-center gap-2">
                     <User className="h-5 w-5 text-medical-primary" />
                     Seleção do Paciente
@@ -351,13 +330,13 @@ const Receitas = () => {
                   <div className="medical-form-group">
                     <Label className="medical-form-label">Paciente *</Label>
                     <Select value={selectedPatient} onValueChange={setSelectedPatient}>
-                      <SelectTrigger>
+                      <SelectTrigger className="border-2 border-medical-warning">
                         <SelectValue placeholder="Selecione o paciente" />
                       </SelectTrigger>
                       <SelectContent>
                         {patients.map(patient => (
                           <SelectItem key={patient.id} value={patient.id}>
-                            {patient.name} - {patient.cpf}
+                            {patient.name} - {formatCNS(patient.cns)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -365,16 +344,17 @@ const Receitas = () => {
                   </div>
 
                   <div className="medical-form-group">
-                    <Label className="medical-form-label">Validade da Receita</Label>
+                    <Label className="medical-form-label">Quantidade de Meses</Label>
                     <Select value={prescriptionMonths} onValueChange={setPrescriptionMonths}>
-                      <SelectTrigger>
+                      <SelectTrigger className="border-2 border-medical-warning">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">1 mês</SelectItem>
-                        <SelectItem value="2">2 meses</SelectItem>
-                        <SelectItem value="3">3 meses</SelectItem>
-                        <SelectItem value="6">6 meses</SelectItem>
+                        {[1, 2, 3, 4, 5, 6].map(month => (
+                          <SelectItem key={month} value={month.toString()}>
+                            {month} {month === 1 ? 'mês' : 'meses'}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -383,8 +363,8 @@ const Receitas = () => {
 
               {/* Selected Patient Info */}
               {selectedPatient && (
-                <Card>
-                  <CardHeader>
+                <Card className="medical-card">
+                  <CardHeader className="medical-card-header">
                     <CardTitle>Dados do Paciente</CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -394,7 +374,7 @@ const Receitas = () => {
                       return (
                         <div className="space-y-2">
                           <div><strong>Nome:</strong> {patient.name}</div>
-                          <div><strong>CPF:</strong> {patient.cpf}</div>
+                          <div><strong>CNS:</strong> {formatCNS(patient.cns)}</div>
                           <div><strong>Idade:</strong> {age} anos</div>
                         </div>
                       );
@@ -405,8 +385,8 @@ const Receitas = () => {
             </div>
 
             {/* Medication Selection */}
-            <Card>
-              <CardHeader>
+            <Card className="medical-card">
+              <CardHeader className="medical-card-header">
                 <CardTitle className="flex items-center gap-2">
                   <Pill className="h-5 w-5 text-medical-primary" />
                   Seleção de Medicamentos
@@ -415,21 +395,21 @@ const Receitas = () => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {medications.map(medication => (
-                    <div key={medication.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50">
+                    <div key={medication.id} className="flex items-center space-x-3 p-3 border-2 border-medical-warning rounded-lg hover:bg-gray-50">
                       <Checkbox
                         id={medication.id}
                         checked={selectedMedications.includes(medication.id)}
                         onCheckedChange={() => handleMedicationToggle(medication.id)}
                       />
                       <div className="flex-1">
-                        <Label htmlFor={medication.id} className="font-medium cursor-pointer">
-                          {medication.name}
+                        <Label htmlFor={medication.id} className="font-medium cursor-pointer text-foreground">
+                          {medication.name} {medication.dosage}
                         </Label>
                         <p className="text-sm text-muted-foreground">
-                          {medication.activeIngredient}
+                          {medication.presentation}
                           {medication.isControlled && (
-                            <span className="ml-2 bg-medical-warning/20 text-medical-warning px-2 py-1 rounded text-xs">
-                              Controlado {medication.controlType}
+                            <span className="ml-2 controlled-badge">
+                              CONTROLADO
                             </span>
                           )}
                         </p>
@@ -449,23 +429,25 @@ const Receitas = () => {
           </div>
         )}
 
-        {/* Step 2: Dosage */}
+        {/* Step 2: Posology */}
         {currentStep === 2 && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
+            <Card className="medical-card">
+              <CardHeader className="medical-card-header">
                 <CardTitle>Definir Posologia</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {selectedMedications.map(medicationId => {
                   const medication = medications.find(m => m.id === medicationId)!;
                   return (
-                    <div key={medicationId} className="p-4 border rounded-lg">
+                    <div key={medicationId} className="p-4 border-2 border-medical-warning rounded-lg bg-white">
                       <div className="flex items-center gap-2 mb-3">
-                        <h4 className="font-semibold">{medication.name}</h4>
+                        <h4 className="font-semibold text-foreground">
+                          {medication.name} {medication.dosage} - {medication.presentation}
+                        </h4>
                         {medication.isControlled && (
-                          <span className="bg-medical-warning/20 text-medical-warning px-2 py-1 rounded-full text-xs">
-                            Controlado {medication.controlType}
+                          <span className="controlled-badge">
+                            CONTROLADO
                           </span>
                         )}
                       </div>
@@ -474,9 +456,10 @@ const Receitas = () => {
                           Posologia {medication.isControlled ? '*' : ''}
                         </Label>
                         <Input
-                          value={medicationDosages[medicationId] || ''}
-                          onChange={(e) => handleDosageChange(medicationId, e.target.value)}
+                          value={medicationPosologies[medicationId] || ''}
+                          onChange={(e) => handlePosologyChange(medicationId, e.target.value)}
                           placeholder="Ex: 1 comprimido de 8 em 8 horas por 7 dias"
+                          className="border-2 border-medical-warning"
                           required={medication.isControlled}
                         />
                       </div>
@@ -490,6 +473,7 @@ const Receitas = () => {
                     value={observations}
                     onChange={(e) => setObservations(e.target.value)}
                     placeholder="Observações adicionais para o paciente..."
+                    className="border-2 border-medical-warning"
                     rows={3}
                   />
                 </div>
@@ -502,9 +486,9 @@ const Receitas = () => {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Voltar
                   </Button>
-                  <Button onClick={generatePrescription} className="btn-medical-success">
+                  <Button onClick={generatePrescriptions} className="btn-medical-success">
                     <Printer className="h-4 w-4 mr-2" />
-                    Gerar e Imprimir Receita
+                    Gerar {prescriptionMonths} Receita{parseInt(prescriptionMonths) > 1 ? 's' : ''}
                   </Button>
                 </div>
               </CardContent>

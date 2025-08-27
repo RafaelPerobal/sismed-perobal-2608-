@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { FileText, User, Pill, ArrowRight, ArrowLeft, Printer } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, User, Pill, ArrowRight, ArrowLeft, Printer, History } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,17 +21,22 @@ const Receitas = () => {
   const [selectedMedications, setSelectedMedications] = useState<string[]>([]);
   const [medicationPosologies, setMedicationPosologies] = useState<{[key: string]: string}>({});
   const [observations, setObservations] = useState('');
+  const [professional, setProfessional] = useState<any>(null);
 
   const [patients] = useLocalStorage<Patient[]>('sismed-patients', []);
   const [medications] = useLocalStorage<Medication[]>('sismed-medications', []);
   const [prescriptions, setPrescriptions] = useLocalStorage<Prescription[]>('sismed-prescriptions', []);
 
-  const professional = {
-    name: 'Dr. João Silva',
-    type: 'Médico',
-    registry: 'CRM 12345-SP',
-    specialty: 'Clínica Geral'
-  };
+  useEffect(() => {
+    // Carregar dados do profissional da sessão
+    const professionalData = sessionStorage.getItem('sismed-current-professional');
+    if (professionalData) {
+      setProfessional(JSON.parse(professionalData));
+    }
+  }, []);
+
+  // Filtrar receitas da sessão atual (últimas 10)
+  const currentSessionPrescriptions = prescriptions.slice(-10).reverse();
 
   const handleMedicationToggle = (medicationId: string) => {
     setSelectedMedications(prev => 
@@ -86,7 +91,7 @@ const Receitas = () => {
     // Generate multiple prescriptions for each month
     for (let month = 0; month < monthsNum; month++) {
       const prescriptionDate = new Date(baseDate);
-      prescriptionDate.setMonth(prescriptionDate.getMonth() + month);
+      prescriptionDate.setDate(prescriptionDate.getDate() + (30 * month));
       
       const prescription: Prescription = {
         id: `RX${Date.now()}-${month + 1}`,
@@ -97,7 +102,7 @@ const Receitas = () => {
         months: 1, // Each prescription is for 1 month
         observations: observations,
         date: prescriptionDate.toISOString(),
-        professionalName: professional.name
+        professionalName: professional?.name || 'Profissional não identificado'
       };
 
       setPrescriptions(prev => [...prev, prescription]);
@@ -131,6 +136,200 @@ const Receitas = () => {
     return `Perobal, dia ${day} de ${month} de ${year}`;
   };
 
+  const reprintPrescription = (prescription: Prescription) => {
+    const patient = patients.find(p => p.id === prescription.patientId);
+    if (!patient) {
+      toast.error('Paciente não encontrado');
+      return;
+    }
+
+    const prescriptionDate = new Date(prescription.date);
+    generateSinglePrescriptionPDF(patient, prescription.medications, prescriptionDate, prescription.observations);
+  };
+
+  const generateSinglePrescriptionPDF = (
+    patient: Patient, 
+    medications: PrescriptionMedication[], 
+    prescriptionDate: Date,
+    observations: string
+  ) => {
+    const newWindow = window.open('', '_blank');
+    if (!newWindow) return;
+
+    const calculateAge = (birthDate: string) => {
+      const today = new Date();
+      const birth = new Date(birthDate);
+      return today.getFullYear() - birth.getFullYear();
+    };
+
+    const generateViaHTML = (viaType: string) => `
+      <div class="prescription-via">
+        <div class="via-label">${viaType}</div>
+        
+        <div class="header">
+          <div class="logo-section">
+            <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
+            <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
+          </div>
+          <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
+          <div class="subtitle">RECEITA MÉDICA</div>
+        </div>
+
+        <div class="professional-info">
+          <strong>Profissional:</strong> ${professional?.name || 'Não identificado'}<br>
+          <strong>Registro:</strong> ${professional?.registry || 'N/A'}<br>
+          <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
+        </div>
+
+        <div class="patient-info">
+          <strong>Paciente:</strong> ${patient.name}<br>
+          <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
+          <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+          <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
+        </div>
+
+        <div class="medications">
+          <strong>Medicamentos Prescritos:</strong>
+          ${medications.map(item => `
+            <div class="medication-item">
+              <div class="medication-name">
+                ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
+                ${item.medication.isControlled ? '<span class="controlled-badge">CONTROLADO</span>' : ''}
+              </div>
+              <div class="medication-posology">${item.posology}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+
+        <div class="footer">
+          <div>${formatDateToPerobal(prescriptionDate)}</div>
+          <div class="signature-line"></div>
+          <div style="text-align: center; margin-top: 5px;">
+            ${professional?.name || 'Profissional não identificado'}<br>
+            ${professional?.registry || 'N/A'}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const prescriptionHTML = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Receita Médica</title>
+        <style>
+          @page { size: A4 landscape; margin: 1cm; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
+          
+          .prescription-container { 
+            display: flex; 
+            gap: 10px; 
+            height: 100vh; 
+          }
+          
+          .prescription-via { 
+            flex: 1; 
+            border: 2px solid #fbbf24; 
+            padding: 20px; 
+            background: white;
+            position: relative;
+          }
+          
+          .prescription-via:first-child::after {
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            border-right: 2px dashed #666;
+          }
+          
+          .via-label { 
+            text-align: center; 
+            font-weight: bold; 
+            color: #1e40af; 
+            margin-bottom: 20px;
+            font-size: 14px;
+          }
+          
+          .header { 
+            text-align: center; 
+            border-bottom: 2px solid #1e40af; 
+            padding-bottom: 15px; 
+            margin-bottom: 20px;
+          }
+          
+          .logo-section { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+          .logo-section img { height: 40px; }
+          .title { color: #1e40af; font-size: 18px; font-weight: bold; }
+          .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
+          
+          .professional-info, .patient-info { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            border: 2px solid #fbbf24;
+            border-radius: 5px; 
+            margin-bottom: 20px;
+          }
+          
+          .medications { margin-bottom: 20px; }
+          .medication-item { 
+            padding: 8px; 
+            border-bottom: 1px solid #eee; 
+            margin-bottom: 10px;
+          }
+          .medication-name { font-weight: bold; color: black; }
+          .medication-posology { margin-top: 5px; font-style: italic; }
+          
+          .controlled-badge { 
+            background: #fca5a5; 
+            color: #991b1b; 
+            border: 1px solid #f87171;
+            padding: 2px 6px; 
+            border-radius: 3px; 
+            font-size: 10px;
+            margin-left: 10px;
+          }
+          
+          .observations { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border: 2px solid #fbbf24; border-radius: 5px; }
+          
+          .footer { 
+            margin-top: 30px; 
+            border-top: 2px solid #fbbf24; 
+            padding-top: 15px;
+          }
+          
+          .signature-line { 
+            border-bottom: 2px solid #000; 
+            width: 300px; 
+            margin: 30px auto 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="prescription-container">
+          ${generateViaHTML('VIA DA FARMÁCIA')}
+          ${generateViaHTML('VIA DO PACIENTE')}
+        </div>
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    newWindow.document.write(prescriptionHTML);
+    newWindow.document.close();
+  };
+
   const generateMultiplePrescriptionsPDF = (
     patient: Patient, 
     medications: PrescriptionMedication[], 
@@ -161,9 +360,9 @@ const Receitas = () => {
           </div>
 
           <div class="professional-info">
-            <strong>Profissional:</strong> ${professional.name}<br>
-            <strong>Registro:</strong> ${professional.registry}<br>
-            <strong>Especialidade:</strong> ${professional.specialty || 'Clínica Geral'}
+            <strong>Profissional:</strong> ${professional?.name || 'Não identificado'}<br>
+            <strong>Registro:</strong> ${professional?.registry || 'N/A'}<br>
+            <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
           </div>
 
           <div class="patient-info">
@@ -189,11 +388,11 @@ const Receitas = () => {
           ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
 
           <div class="footer">
-            <div>Válido por 30 dias a partir de ${formatDateToPerobal(prescriptionDate)}</div>
+            <div>${formatDateToPerobal(prescriptionDate)}</div>
             <div class="signature-line"></div>
             <div style="text-align: center; margin-top: 5px;">
-              ${professional.name}<br>
-              ${professional.registry}
+              ${professional?.name || 'Profissional não identificado'}<br>
+              ${professional?.registry || 'N/A'}
             </div>
           </div>
         </div>
@@ -213,7 +412,7 @@ const Receitas = () => {
     let allPrescriptionsHTML = '';
     for (let month = 0; month < totalMonths; month++) {
       const prescriptionDate = new Date(baseDate);
-      prescriptionDate.setMonth(prescriptionDate.getMonth() + month);
+      prescriptionDate.setDate(prescriptionDate.getDate() + (30 * month));
       allPrescriptionsHTML += generateSinglePrescriptionHTML(prescriptionDate, month + 1);
     }
 
@@ -353,6 +552,40 @@ const Receitas = () => {
             </p>
           </div>
         </div>
+
+        {/* History Section */}
+        {currentSessionPrescriptions.length > 0 && (
+          <Card className="medical-card">
+            <CardHeader className="medical-card-header">
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-medical-primary" />
+                Histórico desta Sessão
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {currentSessionPrescriptions.map((prescription) => (
+                  <div key={prescription.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <span className="font-medium">{prescription.patientName}</span>
+                      <span className="text-sm text-gray-600 ml-2">
+                        {new Date(prescription.date).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => reprintPrescription(prescription)}
+                    >
+                      <Printer className="h-4 w-4 mr-1" />
+                      Reimprimir
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Step Indicator */}
         <div className="step-indicator">

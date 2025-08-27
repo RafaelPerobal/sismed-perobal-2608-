@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Edit, Trash2, User } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +12,12 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { validateCNS, formatCNS } from '@/utils/cnsValidation';
 import { Patient } from '@/types';
 
+const ITEMS_PER_PAGE = 10;
+
 const Pacientes = () => {
   const [patients, setPatients] = useLocalStorage<Patient[]>('sismed-patients', []);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   
@@ -30,6 +33,16 @@ const Pacientes = () => {
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.cns.includes(searchTerm.replace(/\D/g, ''))
   );
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredPatients.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedPatients = filteredPatients.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  // Reset to first page when search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const resetForm = () => {
     setFormData({
@@ -70,16 +83,32 @@ const Pacientes = () => {
       return;
     }
 
+    // Check for CNS uniqueness
+    const existingPatient = patients.find(p => 
+      p.cns === formData.cns && p.id !== editingPatient?.id
+    );
+    
+    if (existingPatient) {
+      toast.error('Já existe um paciente cadastrado com este CNS.');
+      return;
+    }
+
+    // Convert name to uppercase
+    const patientData = {
+      ...formData,
+      name: formData.name.toUpperCase()
+    };
+
     if (editingPatient) {
       setPatients(patients.map(p => 
         p.id === editingPatient.id 
-          ? { ...formData, id: editingPatient.id }
+          ? { ...patientData, id: editingPatient.id }
           : p
       ));
       toast.success('Paciente atualizado com sucesso!');
     } else {
       const newPatient: Patient = {
-        ...formData,
+        ...patientData,
         id: Date.now().toString()
       };
       setPatients([...patients, newPatient]);
@@ -100,6 +129,10 @@ const Pacientes = () => {
       return age - 1;
     }
     return age;
+  };
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({...formData, name: e.target.value.toUpperCase()});
   };
 
   return (
@@ -138,7 +171,7 @@ const Pacientes = () => {
                   <Label className="medical-form-label">Nome Completo *</Label>
                   <Input
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={handleNameChange}
                     className="border-2 border-medical-warning"
                     required
                   />
@@ -245,7 +278,7 @@ const Pacientes = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPatients.map((patient) => (
+                  {paginatedPatients.map((patient) => (
                     <tr key={patient.id}>
                       <td className="font-medium text-foreground">{patient.name}</td>
                       <td className="font-mono">{formatCNS(patient.cns)}</td>
@@ -276,6 +309,36 @@ const Pacientes = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Mostrando {startIndex + 1} a {Math.min(startIndex + ITEMS_PER_PAGE, filteredPatients.length)} de {filteredPatients.length} pacientes
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

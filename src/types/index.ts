@@ -38,4 +38,6 @@ export interface Professional {
   type: string;
   registry: string;
   specialty: string;
+  healthUnit: string;
+  rememberData: boolean;
 }

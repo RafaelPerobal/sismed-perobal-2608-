@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -26,22 +25,8 @@ const Medicamentos = () => {
     isControlled: false
   });
 
-  const presentations = [
-    'COMPRIMIDO',
-    'CÁPSULA',
-    'SOLUÇÃO ORAL',
-    'SUSPENSÃO ORAL',
-    'SUSPENSÃO',
-    'SOLUÇÃO INJETÁVEL',
-    'POMADA',
-    'CREME',
-    'GEL',
-    'SUPOSITÓRIO'
-  ];
-
   const filteredMedications = medications.filter(medication =>
-    medication.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    medication.dosage.toLowerCase().includes(searchTerm.toLowerCase())
+    medication.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const resetForm = () => {
@@ -75,6 +60,19 @@ const Medicamentos = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check for duplicates (case-insensitive combination of name + dosage + presentation)
+    const isDuplicate = medications.some(med => 
+      med.id !== editingMedication?.id &&
+      med.name.toLowerCase() === formData.name.toLowerCase() &&
+      med.dosage.toLowerCase() === formData.dosage.toLowerCase() &&
+      med.presentation.toLowerCase() === formData.presentation.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      toast.error('Já existe um medicamento com essa combinação de nome, dosagem e apresentação.');
+      return;
+    }
+
     if (editingMedication) {
       setMedications(medications.map(m => 
         m.id === editingMedication.id 
@@ -105,7 +103,7 @@ const Medicamentos = () => {
               Gestão de Medicamentos
             </h1>
             <p className="text-muted-foreground mt-1">
-              Cadastre e gerencie os medicamentos do sistema
+              Cadastre e gerencie os medicamentos disponíveis
             </p>
           </div>
           
@@ -127,64 +125,53 @@ const Medicamentos = () => {
               </DialogHeader>
               
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="medical-form-group">
+                  <Label className="medical-form-label">Nome do Medicamento *</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    placeholder="Ex: Paracetamol"
+                    className="border-2 border-medical-warning"
+                    required
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="medical-form-group">
-                    <Label className="medical-form-label">Nome *</Label>
+                    <Label className="medical-form-label">Dosagem *</Label>
                     <Input
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      placeholder="Ex: PARACETAMOL"
+                      value={formData.dosage}
+                      onChange={(e) => setFormData({...formData, dosage: e.target.value})}
+                      placeholder="Ex: 500mg"
                       className="border-2 border-medical-warning"
                       required
                     />
                   </div>
                   
                   <div className="medical-form-group">
-                    <Label className="medical-form-label">Dosagem *</Label>
+                    <Label className="medical-form-label">Apresentação *</Label>
                     <Input
-                      value={formData.dosage}
-                      onChange={(e) => setFormData({...formData, dosage: e.target.value})}
-                      placeholder="Ex: 500MG, 5MG/ML"
+                      value={formData.presentation}
+                      onChange={(e) => setFormData({...formData, presentation: e.target.value})}
+                      placeholder="Ex: Comprimido"
                       className="border-2 border-medical-warning"
                       required
                     />
                   </div>
                 </div>
 
-                <div className="medical-form-group">
-                  <Label className="medical-form-label">Apresentação *</Label>
-                  <Select 
-                    value={formData.presentation} 
-                    onValueChange={(value) => setFormData({...formData, presentation: value})}
-                  >
-                    <SelectTrigger className="border-2 border-medical-warning">
-                      <SelectValue placeholder="Selecione a apresentação" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {presentations.map(presentation => (
-                        <SelectItem key={presentation} value={presentation}>{presentation}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-4 p-4 bg-gray-50 rounded-lg border-2 border-medical-warning">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="controlled"
-                      checked={formData.isControlled}
-                      onCheckedChange={(checked) => 
-                        setFormData({
-                          ...formData, 
-                          isControlled: checked as boolean
-                        })
-                      }
-                    />
-                    <Label htmlFor="controlled" className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                      Medicamento Controlado
-                    </Label>
-                  </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="controlled"
+                    checked={formData.isControlled}
+                    onCheckedChange={(checked) => 
+                      setFormData({...formData, isControlled: checked as boolean})
+                    }
+                  />
+                  <Label htmlFor="controlled" className="text-sm cursor-pointer flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-medical-danger" />
+                    Medicamento Controlado
+                  </Label>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -210,7 +197,7 @@ const Medicamentos = () => {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Buscar por nome ou dosagem..."
+                placeholder="Buscar medicamento..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 border-2 border-medical-warning"
@@ -248,11 +235,11 @@ const Medicamentos = () => {
                       <td>
                         {medication.isControlled ? (
                           <span className="controlled-badge">
-                            <AlertTriangle className="h-3 w-3 inline mr-1" />
+                            <AlertTriangle className="h-3 w-3 mr-1" />
                             CONTROLADO
                           </span>
                         ) : (
-                          <span className="text-green-600 font-medium">COMUM</span>
+                          <span className="text-gray-600">Comum</span>
                         )}
                       </td>
                       <td>

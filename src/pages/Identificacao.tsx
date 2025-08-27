@@ -14,6 +14,7 @@ interface ProfessionalData {
   type: string;
   name: string;
   registry: string;
+  specialty: string;
   healthUnit: string;
   rememberData: boolean;
 }
@@ -24,6 +25,7 @@ const Identificacao = () => {
     type: '',
     name: '',
     registry: '',
+    specialty: '',
     healthUnit: '',
     rememberData: false
   });
@@ -50,12 +52,23 @@ const Identificacao = () => {
       return;
     }
 
+    if (formData.type === 'MÉDICO' && !formData.specialty) {
+      toast.error('Especialidade é obrigatória para médicos');
+      return;
+    }
+
+    // Converter nome para maiúsculo
+    const professionalData = {
+      ...formData,
+      name: formData.name.toUpperCase()
+    };
+
     // Salvar dados na sessão (sempre)
-    sessionStorage.setItem('sismed-current-professional', JSON.stringify(formData));
+    sessionStorage.setItem('sismed-current-professional', JSON.stringify(professionalData));
     
     // Salvar dados permanentemente se solicitado
-    if (formData.rememberData) {
-      localStorage.setItem('sismed-professional', JSON.stringify(formData));
+    if (professionalData.rememberData) {
+      localStorage.setItem('sismed-professional', JSON.stringify(professionalData));
     }
 
     toast.success('Identificação realizada com sucesso!');
@@ -79,6 +92,14 @@ const Identificacao = () => {
       case 'FISIOTERAPEUTA': return 'CREFITO';
       default: return 'Registro';
     }
+  };
+
+  const shouldShowSpecialty = () => {
+    return formData.type && formData.type !== 'VISITANTE';
+  };
+
+  const isSpecialtyRequired = () => {
+    return formData.type === 'MÉDICO';
   };
 
   return (
@@ -121,7 +142,7 @@ const Identificacao = () => {
                 <Label className="medical-form-label">Tipo de Profissional *</Label>
                 <Select 
                   value={formData.type} 
-                  onValueChange={(value) => setFormData({ ...formData, type: value, registry: '' })}
+                  onValueChange={(value) => setFormData({ ...formData, type: value, registry: '', specialty: '' })}
                 >
                   <SelectTrigger className="border-2 border-medical-warning">
                     <SelectValue placeholder="Selecione o tipo de profissional" />
@@ -176,6 +197,21 @@ const Identificacao = () => {
                     value={formData.registry}
                     onChange={(e) => setFormData({ ...formData, registry: e.target.value })}
                     placeholder={`Digite o número do ${getRegistryLabel(formData.type)}`}
+                    className="border-2 border-medical-warning"
+                  />
+                </div>
+              )}
+
+              {shouldShowSpecialty() && (
+                <div className="medical-form-group">
+                  <Label className="medical-form-label">
+                    Especialidade {isSpecialtyRequired() ? '*' : ''}
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.specialty}
+                    onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                    placeholder="Digite sua especialidade"
                     className="border-2 border-medical-warning"
                   />
                 </div>

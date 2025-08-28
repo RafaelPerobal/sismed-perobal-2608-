@@ -147,11 +147,16 @@ const Receitas = () => {
   };
 
   const calculateMedicationsPerPage = () => {
-    // Estimate based on available space - approximately 8-10 medications per page
-    const baseHeight = 400; // Header, patient info, footer space
-    const medicationHeight = 60; // Estimated height per medication item
-    const availableHeight = 700; // A4 landscape usable height
-    return Math.floor((availableHeight - baseHeight) / medicationHeight);
+    // Cálculo conservador: garantir que todos os medicamentos caibam em uma página
+    // Espaço fixo: cabeçalho (120px) + info profissional (60px) + info paciente (60px) + 
+    // observações (80px) + rodapé (100px) + margens e espaçamentos (80px) = ~500px
+    const fixedHeight = 500;
+    const medicationHeight = 45; // Altura estimada por medicamento
+    const availableHeight = 650; // Altura útil da página A4 landscape (menor para ser conservador)
+    const maxMedications = Math.floor((availableHeight - fixedHeight) / medicationHeight);
+    
+    // Garantir pelo menos 3 medicamentos por página, máximo 8 para segurança
+    return Math.max(3, Math.min(8, maxMedications));
   };
 
   const splitMedicationsIntoPages = (medications: PrescriptionMedication[]) => {
@@ -196,13 +201,15 @@ const Receitas = () => {
         </div>
 
         <div class="professional-info">
-          <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}<br>
-          <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
+          <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}
         </div>
 
         <div class="patient-info">
           <strong>Nome:</strong> ${patient.name}<br>
-          <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+          <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos
+        </div>
+
+        <div class="prescription-date">
           <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
         </div>
 
@@ -222,10 +229,12 @@ const Receitas = () => {
         ${observations && pageNum === 1 ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
 
         <div class="footer">
-          <div>${formatDateToPerobal(prescriptionDate)}</div>
           <div class="signature-line"></div>
           <div style="text-align: center; margin-top: 5px;">
             ${professional?.name || 'Profissional não identificado'} — ${professional?.registry || 'N/A'}
+          </div>
+          <div style="text-align: center; margin-top: 10px; font-size: 11px;">
+            ${formatDateToPerobal(prescriptionDate)}
           </div>
         </div>
       </div>
@@ -241,7 +250,7 @@ const Receitas = () => {
         </div>
       `;
     } else {
-      // Generate multiple pages
+      // Generate multiple pages - cada página é completa e independente
       prescriptionHTML = medicationPages.map((_, pageIndex) => `
         <div class="prescription-page">
           <div class="prescription-container">
@@ -260,13 +269,14 @@ const Receitas = () => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Receituário</title>
         <style>
-          @page { size: A4 landscape; margin: 1cm; }
+          @page { size: A4 landscape; margin: 0.8cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
           
           .prescription-page {
             page-break-after: always;
             height: 100vh;
+            width: 100%;
           }
           
           .prescription-page:last-child {
@@ -275,22 +285,25 @@ const Receitas = () => {
           
           .prescription-container { 
             display: flex; 
-            gap: 10px; 
-            height: 100vh; 
+            gap: 8px; 
+            height: 100%; 
+            width: 100%;
           }
           
           .prescription-via { 
             flex: 1; 
             border: 2px solid #fbbf24; 
-            padding: 20px; 
+            padding: 15px; 
             background: white;
             position: relative;
+            height: 100%;
+            overflow: hidden;
           }
           
           .prescription-via:first-child::after {
             content: '';
             position: absolute;
-            right: -5px;
+            right: -4px;
             top: 0;
             bottom: 0;
             width: 2px;
@@ -299,8 +312,8 @@ const Receitas = () => {
           
           .via-label { 
             position: absolute;
-            top: 10px;
-            right: 15px;
+            top: 8px;
+            right: 12px;
             font-weight: bold; 
             color: #1e40af; 
             font-size: 9pt;
@@ -309,66 +322,78 @@ const Receitas = () => {
           .header { 
             text-align: center; 
             border-bottom: 2px solid #1e40af; 
-            padding-bottom: 15px; 
-            margin-bottom: 20px;
-            margin-top: 25px;
+            padding-bottom: 12px; 
+            margin-bottom: 15px;
+            margin-top: 20px;
           }
           
           .logo-section { 
             display: flex; 
             justify-content: center; 
             align-items: center;
-            gap: 15px; 
-            margin-bottom: 10px; 
+            gap: 12px; 
+            margin-bottom: 8px; 
           }
-          .logo-section img { height: 40px; }
+          .logo-section img { height: 35px; }
           .institution-name { 
             color: #1e40af; 
-            font-size: 14px; 
+            font-size: 13px; 
             font-weight: bold; 
           }
-          .title { color: #1e40af; font-size: 18px; font-weight: bold; }
-          .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
+          .title { color: #1e40af; font-size: 16px; font-weight: bold; }
+          .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
           
-          .professional-info, .patient-info { 
+          .professional-info, .patient-info, .prescription-date { 
             background: #f8f9fa; 
-            padding: 10px; 
-            border: 2px solid #fbbf24;
-            border-radius: 5px; 
-            margin-bottom: 20px;
+            padding: 8px; 
+            border: 1px solid #fbbf24;
+            border-radius: 4px; 
+            margin-bottom: 12px;
+            font-size: 11px;
           }
           
-          .medications { margin-bottom: 20px; }
-          .medication-item { 
-            padding: 8px; 
-            border-bottom: 1px solid #eee; 
-            margin-bottom: 10px;
+          .medications { 
+            margin-bottom: 15px;
+            flex-grow: 1;
+            overflow: hidden;
           }
-          .medication-name { font-weight: bold; color: black; }
-          .medication-posology { margin-top: 5px; font-style: italic; }
+          .medication-item { 
+            padding: 6px; 
+            border-bottom: 1px solid #eee; 
+            margin-bottom: 6px;
+          }
+          .medication-name { font-weight: bold; color: black; font-size: 11px; }
+          .medication-posology { margin-top: 3px; font-style: italic; font-size: 10px; }
           
           .controlled-badge { 
             background: #fca5a5; 
             color: #991b1b; 
             border: 1px solid #f87171;
-            padding: 2px 6px; 
-            border-radius: 3px; 
-            font-size: 10px;
-            margin-left: 10px;
+            padding: 1px 4px; 
+            border-radius: 2px; 
+            font-size: 8px;
+            margin-left: 8px;
           }
           
-          .observations { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border: 2px solid #fbbf24; border-radius: 5px; }
+          .observations { 
+            margin-bottom: 15px; 
+            padding: 8px; 
+            background: #f8f9fa; 
+            border: 1px solid #fbbf24; 
+            border-radius: 4px;
+            font-size: 10px;
+          }
           
           .footer { 
-            margin-top: 30px; 
-            border-top: 2px solid #fbbf24; 
-            padding-top: 15px;
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid #fbbf24;
           }
           
           .signature-line { 
-            border-bottom: 2px solid #000; 
-            width: 300px; 
-            margin: 30px auto 10px;
+            border-bottom: 1px solid #000; 
+            width: 250px; 
+            margin: 20px auto 8px;
           }
         </style>
       </head>
@@ -419,13 +444,15 @@ const Receitas = () => {
           </div>
 
           <div class="professional-info">
-            <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}<br>
-            <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
+            <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}
           </div>
 
           <div class="patient-info">
             <strong>Nome:</strong> ${patient.name}<br>
-            <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+            <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos
+          </div>
+
+          <div class="prescription-date">
             <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
           </div>
 
@@ -445,10 +472,12 @@ const Receitas = () => {
           ${observations && pageNum === 1 ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
 
           <div class="footer">
-            <div>${formatDateToPerobal(prescriptionDate)}</div>
             <div class="signature-line"></div>
             <div style="text-align: center; margin-top: 5px;">
               ${professional?.name || 'Profissional não identificado'} — ${professional?.registry || 'N/A'}
+            </div>
+            <div style="text-align: center; margin-top: 10px; font-size: 11px;">
+              ${formatDateToPerobal(prescriptionDate)}
             </div>
           </div>
         </div>
@@ -491,13 +520,14 @@ const Receitas = () => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Receituários - ${totalMonths} ${totalMonths === 1 ? 'Via' : 'Vias'}</title>
         <style>
-          @page { size: A4 landscape; margin: 1cm; }
+          @page { size: A4 landscape; margin: 0.8cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
           
           .prescription-page {
             page-break-after: always;
             height: 100vh;
+            width: 100%;
           }
           
           .prescription-page:last-child {
@@ -506,22 +536,25 @@ const Receitas = () => {
           
           .prescription-container { 
             display: flex; 
-            gap: 10px; 
+            gap: 8px; 
             height: 100%; 
+            width: 100%;
           }
           
           .prescription-via { 
             flex: 1; 
             border: 2px solid #fbbf24; 
-            padding: 20px; 
+            padding: 15px; 
             background: white;
             position: relative;
+            height: 100%;
+            overflow: hidden;
           }
           
           .prescription-via:first-child::after {
             content: '';
             position: absolute;
-            right: -5px;
+            right: -4px;
             top: 0;
             bottom: 0;
             width: 2px;
@@ -530,8 +563,8 @@ const Receitas = () => {
           
           .via-label { 
             position: absolute;
-            top: 10px;
-            right: 15px;
+            top: 8px;
+            right: 12px;
             font-weight: bold; 
             color: #1e40af; 
             font-size: 9pt;
@@ -540,66 +573,78 @@ const Receitas = () => {
           .header { 
             text-align: center; 
             border-bottom: 2px solid #1e40af; 
-            padding-bottom: 15px; 
-            margin-bottom: 20px;
-            margin-top: 25px;
+            padding-bottom: 12px; 
+            margin-bottom: 15px;
+            margin-top: 20px;
           }
           
           .logo-section { 
             display: flex; 
             justify-content: center; 
             align-items: center;
-            gap: 15px; 
-            margin-bottom: 10px; 
+            gap: 12px; 
+            margin-bottom: 8px; 
           }
-          .logo-section img { height: 40px; }
+          .logo-section img { height: 35px; }
           .institution-name { 
             color: #1e40af; 
-            font-size: 14px; 
+            font-size: 13px; 
             font-weight: bold; 
           }
-          .title { color: #1e40af; font-size: 18px; font-weight: bold; }
-          .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
+          .title { color: #1e40af; font-size: 16px; font-weight: bold; }
+          .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
           
-          .professional-info, .patient-info { 
+          .professional-info, .patient-info, .prescription-date { 
             background: #f8f9fa; 
-            padding: 10px; 
-            border: 2px solid #fbbf24;
-            border-radius: 5px; 
-            margin-bottom: 20px;
+            padding: 8px; 
+            border: 1px solid #fbbf24;
+            border-radius: 4px; 
+            margin-bottom: 12px;
+            font-size: 11px;
           }
           
-          .medications { margin-bottom: 20px; }
-          .medication-item { 
-            padding: 8px; 
-            border-bottom: 1px solid #eee; 
-            margin-bottom: 10px;
+          .medications { 
+            margin-bottom: 15px;
+            flex-grow: 1;
+            overflow: hidden;
           }
-          .medication-name { font-weight: bold; color: black; }
-          .medication-posology { margin-top: 5px; font-style: italic; }
+          .medication-item { 
+            padding: 6px; 
+            border-bottom: 1px solid #eee; 
+            margin-bottom: 6px;
+          }
+          .medication-name { font-weight: bold; color: black; font-size: 11px; }
+          .medication-posology { margin-top: 3px; font-style: italic; font-size: 10px; }
           
           .controlled-badge { 
             background: #fca5a5; 
             color: #991b1b; 
             border: 1px solid #f87171;
-            padding: 2px 6px; 
-            border-radius: 3px; 
-            font-size: 10px;
-            margin-left: 10px;
+            padding: 1px 4px; 
+            border-radius: 2px; 
+            font-size: 8px;
+            margin-left: 8px;
           }
           
-          .observations { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border: 2px solid #fbbf24; border-radius: 5px; }
+          .observations { 
+            margin-bottom: 15px; 
+            padding: 8px; 
+            background: #f8f9fa; 
+            border: 1px solid #fbbf24; 
+            border-radius: 4px;
+            font-size: 10px;
+          }
           
           .footer { 
-            margin-top: 30px; 
-            border-top: 2px solid #fbbf24; 
-            padding-top: 15px;
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid #fbbf24;
           }
           
           .signature-line { 
-            border-bottom: 2px solid #000; 
-            width: 300px; 
-            margin: 30px auto 10px;
+            border-bottom: 1px solid #000; 
+            width: 250px; 
+            margin: 20px auto 8px;
           }
         </style>
       </head>

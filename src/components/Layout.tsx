@@ -1,34 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, Pill, FileText, LogOut, User, Building2 } from 'lucide-react';
+import { Home, Users, Pill, FileText, LogOut, User, Building2, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+
 interface ProfessionalData {
   type: string;
   name: string;
   registry: string;
   healthUnit: string;
 }
+
 interface LayoutProps {
   children: React.ReactNode;
 }
+
 const Layout: React.FC<LayoutProps> = ({
   children
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [professional, setProfessional] = useState<ProfessionalData | null>(null);
+
   useEffect(() => {
     const professionalData = sessionStorage.getItem('sismed-current-professional');
     if (professionalData) {
       setProfessional(JSON.parse(professionalData));
     }
   }, []);
+
   const handleLogout = () => {
     sessionStorage.removeItem('sismed-current-professional');
     toast.success('Sessão encerrada com sucesso!');
     navigate('/identificacao');
   };
+
   const menuItems = [{
     path: '/',
     icon: Home,
@@ -44,8 +50,13 @@ const Layout: React.FC<LayoutProps> = ({
   }, {
     path: '/receitas',
     icon: FileText,
-    label: 'Receitas'
+    label: 'Receituários'
+  }, {
+    path: '/configuracoes',
+    icon: Settings,
+    label: 'Configurações'
   }];
+
   return <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b-2 border-medical-warning shadow-sm">
@@ -108,4 +119,5 @@ const Layout: React.FC<LayoutProps> = ({
       </div>
     </div>;
 };
+
 export default Layout;

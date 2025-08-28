@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FileText, User, Pill, ArrowRight, ArrowLeft, Printer, History } from 'lucide-react';
 import Layout from '@/components/Layout';
@@ -147,6 +146,25 @@ const Receitas = () => {
     generateSinglePrescriptionPDF(patient, prescription.medications, prescriptionDate, prescription.observations);
   };
 
+  const calculateMedicationsPerPage = () => {
+    // Estimate based on available space - approximately 8-10 medications per page
+    const baseHeight = 400; // Header, patient info, footer space
+    const medicationHeight = 60; // Estimated height per medication item
+    const availableHeight = 700; // A4 landscape usable height
+    return Math.floor((availableHeight - baseHeight) / medicationHeight);
+  };
+
+  const splitMedicationsIntoPages = (medications: PrescriptionMedication[]) => {
+    const medicationsPerPage = calculateMedicationsPerPage();
+    const pages: PrescriptionMedication[][] = [];
+    
+    for (let i = 0; i < medications.length; i += medicationsPerPage) {
+      pages.push(medications.slice(i, i + medicationsPerPage));
+    }
+    
+    return pages;
+  };
+
   const generateSinglePrescriptionPDF = (
     patient: Patient, 
     medications: PrescriptionMedication[], 
@@ -162,35 +180,35 @@ const Receitas = () => {
       return today.getFullYear() - birth.getFullYear();
     };
 
-    const generateViaHTML = (viaType: string) => `
+    const medicationPages = splitMedicationsIntoPages(medications);
+
+    const generateViaHTML = (viaType: string, pageNum?: number, totalPages?: number) => `
       <div class="prescription-via">
         <div class="via-label">${viaType}</div>
         
         <div class="header">
           <div class="logo-section">
             <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
-            <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
+            <div class="institution-name">SECRETARIA MUNICIPAL DE SAÚDE</div>
           </div>
           <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
-          <div class="subtitle">RECEITA MÉDICA</div>
+          <div class="subtitle">RECEITUÁRIO${totalPages && totalPages > 1 ? ` - PÁGINA ${pageNum} DE ${totalPages}` : ''}</div>
         </div>
 
         <div class="professional-info">
-          <strong>Profissional:</strong> ${professional?.name || 'Não identificado'}<br>
-          <strong>Registro:</strong> ${professional?.registry || 'N/A'}<br>
+          <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}<br>
           <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
         </div>
 
         <div class="patient-info">
-          <strong>Paciente:</strong> ${patient.name}<br>
-          <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
-          <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+          <strong>Nome:</strong> ${patient.name}<br>
+          <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
           <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
         </div>
 
         <div class="medications">
           <strong>Medicamentos Prescritos:</strong>
-          ${medications.map(item => `
+          ${(pageNum ? medicationPages[pageNum - 1] : medications).map(item => `
             <div class="medication-item">
               <div class="medication-name">
                 ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
@@ -201,30 +219,59 @@ const Receitas = () => {
           `).join('')}
         </div>
 
-        ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+        ${observations && pageNum === 1 ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
 
         <div class="footer">
           <div>${formatDateToPerobal(prescriptionDate)}</div>
           <div class="signature-line"></div>
           <div style="text-align: center; margin-top: 5px;">
-            ${professional?.name || 'Profissional não identificado'}<br>
-            ${professional?.registry || 'N/A'}
+            ${professional?.name || 'Profissional não identificado'} — ${professional?.registry || 'N/A'}
           </div>
         </div>
       </div>
     `;
 
-    const prescriptionHTML = `
+    let prescriptionHTML = '';
+    
+    if (medicationPages.length === 1) {
+      prescriptionHTML = `
+        <div class="prescription-container">
+          ${generateViaHTML('VIA DA FARMÁCIA')}
+          ${generateViaHTML('VIA DO PACIENTE')}
+        </div>
+      `;
+    } else {
+      // Generate multiple pages
+      prescriptionHTML = medicationPages.map((_, pageIndex) => `
+        <div class="prescription-page">
+          <div class="prescription-container">
+            ${generateViaHTML('VIA DA FARMÁCIA', pageIndex + 1, medicationPages.length)}
+            ${generateViaHTML('VIA DO PACIENTE', pageIndex + 1, medicationPages.length)}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const fullHTML = `
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Receita Médica</title>
+        <title>Receituário</title>
         <style>
           @page { size: A4 landscape; margin: 1cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; background: white; color: black; }
+          
+          .prescription-page {
+            page-break-after: always;
+            height: 100vh;
+          }
+          
+          .prescription-page:last-child {
+            page-break-after: auto;
+          }
           
           .prescription-container { 
             display: flex; 
@@ -251,11 +298,12 @@ const Receitas = () => {
           }
           
           .via-label { 
-            text-align: center; 
+            position: absolute;
+            top: 10px;
+            right: 15px;
             font-weight: bold; 
             color: #1e40af; 
-            margin-bottom: 20px;
-            font-size: 14px;
+            font-size: 9pt;
           }
           
           .header { 
@@ -263,10 +311,22 @@ const Receitas = () => {
             border-bottom: 2px solid #1e40af; 
             padding-bottom: 15px; 
             margin-bottom: 20px;
+            margin-top: 25px;
           }
           
-          .logo-section { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+          .logo-section { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            gap: 15px; 
+            margin-bottom: 10px; 
+          }
           .logo-section img { height: 40px; }
+          .institution-name { 
+            color: #1e40af; 
+            font-size: 14px; 
+            font-weight: bold; 
+          }
           .title { color: #1e40af; font-size: 18px; font-weight: bold; }
           .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
           
@@ -313,10 +373,7 @@ const Receitas = () => {
         </style>
       </head>
       <body>
-        <div class="prescription-container">
-          ${generateViaHTML('VIA DA FARMÁCIA')}
-          ${generateViaHTML('VIA DO PACIENTE')}
-        </div>
+        ${prescriptionHTML}
         <script>
           window.onload = function() {
             window.print();
@@ -326,7 +383,7 @@ const Receitas = () => {
       </html>
     `;
 
-    newWindow.document.write(prescriptionHTML);
+    newWindow.document.write(fullHTML);
     newWindow.document.close();
   };
 
@@ -345,36 +402,36 @@ const Receitas = () => {
       return today.getFullYear() - birth.getFullYear();
     };
 
+    const medicationPages = splitMedicationsIntoPages(medications);
+
     const generateSinglePrescriptionHTML = (prescriptionDate: Date, monthNumber: number) => {
-      const generateViaHTML = (viaType: string) => `
+      const generateViaHTML = (viaType: string, pageNum?: number, totalPages?: number) => `
         <div class="prescription-via">
           <div class="via-label">${viaType}</div>
           
           <div class="header">
             <div class="logo-section">
               <img src="/lovable-uploads/b954f439-274b-409b-9378-b06f8008eb70.png" alt="Prefeitura" />
-              <img src="/lovable-uploads/013137d0-d9de-4ac8-b7de-d43bb3463c78.png" alt="SISMED" />
+              <div class="institution-name">SECRETARIA MUNICIPAL DE SAÚDE</div>
             </div>
             <div class="title">SISTEMA DE SAÚDE MUNICIPAL DE PEROBAL</div>
-            <div class="subtitle">RECEITA MÉDICA ${totalMonths > 1 ? `- ${monthNumber}ª VIA DE ${totalMonths}` : ''}</div>
+            <div class="subtitle">RECEITUÁRIO${totalMonths > 1 ? ` - ${monthNumber}ª VIA DE ${totalMonths}` : ''}${totalPages && totalPages > 1 ? ` - PÁGINA ${pageNum} DE ${totalPages}` : ''}</div>
           </div>
 
           <div class="professional-info">
-            <strong>Profissional:</strong> ${professional?.name || 'Não identificado'}<br>
-            <strong>Registro:</strong> ${professional?.registry || 'N/A'}<br>
+            <strong>Profissional:</strong> ${professional?.name || 'Não identificado'} — ${professional?.registry || 'N/A'}<br>
             <strong>Especialidade:</strong> ${professional?.specialty || 'Não informado'}
           </div>
 
           <div class="patient-info">
-            <strong>Paciente:</strong> ${patient.name}<br>
-            <strong>CNS:</strong> ${formatCNS(patient.cns)}<br>
-            <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
+            <strong>Nome:</strong> ${patient.name}<br>
+            <strong>CNS:</strong> ${formatCNS(patient.cns)} — <strong>Idade:</strong> ${calculateAge(patient.birthDate)} anos<br>
             <strong>Data:</strong> ${formatDateToPerobal(prescriptionDate)}
           </div>
 
           <div class="medications">
             <strong>Medicamentos Prescritos:</strong>
-            ${medications.map(item => `
+            ${(pageNum ? medicationPages[pageNum - 1] : medications).map(item => `
               <div class="medication-item">
                 <div class="medication-name">
                   ${item.medication.name} ${item.medication.dosage} - ${item.medication.presentation}
@@ -385,27 +442,37 @@ const Receitas = () => {
             `).join('')}
           </div>
 
-          ${observations ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
+          ${observations && pageNum === 1 ? `<div class="observations"><strong>Observações:</strong><br>${observations}</div>` : ''}
 
           <div class="footer">
             <div>${formatDateToPerobal(prescriptionDate)}</div>
             <div class="signature-line"></div>
             <div style="text-align: center; margin-top: 5px;">
-              ${professional?.name || 'Profissional não identificado'}<br>
-              ${professional?.registry || 'N/A'}
+              ${professional?.name || 'Profissional não identificado'} — ${professional?.registry || 'N/A'}
             </div>
           </div>
         </div>
       `;
 
-      return `
-        <div class="prescription-page">
-          <div class="prescription-container">
-            ${generateViaHTML('VIA DA FARMÁCIA')}
-            ${generateViaHTML('VIA DO PACIENTE')}
+      if (medicationPages.length === 1) {
+        return `
+          <div class="prescription-page">
+            <div class="prescription-container">
+              ${generateViaHTML('VIA DA FARMÁCIA')}
+              ${generateViaHTML('VIA DO PACIENTE')}
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        return medicationPages.map((_, pageIndex) => `
+          <div class="prescription-page">
+            <div class="prescription-container">
+              ${generateViaHTML('VIA DA FARMÁCIA', pageIndex + 1, medicationPages.length)}
+              ${generateViaHTML('VIA DO PACIENTE', pageIndex + 1, medicationPages.length)}
+            </div>
+          </div>
+        `).join('');
+      }
     };
 
     // Generate all prescriptions HTML
@@ -422,7 +489,7 @@ const Receitas = () => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Receitas Médicas - ${totalMonths} ${totalMonths === 1 ? 'Via' : 'Vias'}</title>
+        <title>Receituários - ${totalMonths} ${totalMonths === 1 ? 'Via' : 'Vias'}</title>
         <style>
           @page { size: A4 landscape; margin: 1cm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -462,11 +529,12 @@ const Receitas = () => {
           }
           
           .via-label { 
-            text-align: center; 
+            position: absolute;
+            top: 10px;
+            right: 15px;
             font-weight: bold; 
             color: #1e40af; 
-            margin-bottom: 20px;
-            font-size: 14px;
+            font-size: 9pt;
           }
           
           .header { 
@@ -474,10 +542,22 @@ const Receitas = () => {
             border-bottom: 2px solid #1e40af; 
             padding-bottom: 15px; 
             margin-bottom: 20px;
+            margin-top: 25px;
           }
           
-          .logo-section { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+          .logo-section { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            gap: 15px; 
+            margin-bottom: 10px; 
+          }
           .logo-section img { height: 40px; }
+          .institution-name { 
+            color: #1e40af; 
+            font-size: 14px; 
+            font-weight: bold; 
+          }
           .title { color: #1e40af; font-size: 18px; font-weight: bold; }
           .subtitle { color: #666; font-size: 14px; margin-top: 5px; }
           
@@ -545,10 +625,10 @@ const Receitas = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">
-              Emissão de Receitas
+              Emissão de Receituários
             </h1>
             <p className="text-muted-foreground mt-1">
-              Prescreva medicamentos e gere receitas múltiplas
+              Prescreva medicamentos e gere receituários múltiplos
             </p>
           </div>
         </div>
@@ -774,7 +854,7 @@ const Receitas = () => {
                   </Button>
                   <Button onClick={generatePrescriptions} className="btn-medical-success">
                     <Printer className="h-4 w-4 mr-2" />
-                    Gerar {prescriptionMonths} Receita{parseInt(prescriptionMonths) > 1 ? 's' : ''}
+                    Gerar {prescriptionMonths} Receituário{parseInt(prescriptionMonths) > 1 ? 's' : ''}
                   </Button>
                 </div>
               </CardContent>

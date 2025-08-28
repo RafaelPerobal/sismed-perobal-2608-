@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Pacientes from "./pages/Pacientes";
 import Medicamentos from "./pages/Medicamentos";
 import Receitas from "./pages/Receitas";
+import Configuracoes from "./pages/Configuracoes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,6 +65,11 @@ const App = () => (
           <Route path="/receitas" element={
             <ProtectedRoute>
               <Receitas />
+            </ProtectedRoute>
+          } />
+          <Route path="/configuracoes" element={
+            <ProtectedRoute>
+              <Configuracoes />
             </ProtectedRoute>
           } />
           <Route path="*" element={<NotFound />} />
